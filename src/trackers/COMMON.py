@@ -1105,12 +1105,40 @@ class COMMON:
             if not meta.get("language_checked", False):
                 await languages_manager.process_desc_language(meta, tracker=tracker)
 
-            meta_audio_languages: list[str] = meta.get("audio_languages", [])
-            meta_subtitle_languages: list[str] = meta.get("subtitle_languages", [])
+            meta_audio_languages_raw = meta.get("audio_languages", [])
+            meta_subtitle_languages_raw = meta.get("subtitle_languages", [])
+            meta_audio_languages: list[str] = (
+                [str(lang) for lang in cast(list[Any], meta_audio_languages_raw)]
+                if isinstance(meta_audio_languages_raw, list)
+                else []
+            )
+            meta_subtitle_languages: list[str] = (
+                [str(lang) for lang in cast(list[Any], meta_subtitle_languages_raw)]
+                if isinstance(meta_subtitle_languages_raw, list)
+                else []
+            )
 
             languages_to_check = [lang.lower() for lang in languages_to_check]
             audio_languages = [lang.lower() for lang in meta_audio_languages]
             subtitle_languages = [lang.lower() for lang in meta_subtitle_languages]
+
+            sidecar_subtitle_extensions = {'.srt', '.ass', '.ssa', '.vtt', '.sub', '.sup'}
+            source_path = meta.get('path')
+            if isinstance(source_path, str) and meta.get('isdir', False) and os.path.isdir(source_path):
+                try:
+                    has_sidecar_subtitle = any(
+                        os.path.isfile(os.path.join(source_path, file_name))
+                        and os.path.splitext(file_name)[1].lower() in sidecar_subtitle_extensions
+                        for file_name in os.listdir(source_path)
+                    )
+                except OSError:
+                    has_sidecar_subtitle = False
+
+                if has_sidecar_subtitle:
+                    for lang in ('portuguese', 'português'):
+                        if lang not in subtitle_languages:
+                            subtitle_languages.append(lang)
+
             language_display = None
             original_ok = False
             if original_language:
