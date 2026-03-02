@@ -104,6 +104,8 @@ class TorrentCreator:
     _torf_start_time = time.time()
     _video_include_patterns = ["*.mkv", "*.mp4", "*.ts", "*.m2ts", "*.avi", "*.m4v", "*.mov", "*.mpg", "*.mpeg", "*.wmv", "*.webm"]
     _subtitle_include_patterns = ["*.srt", "*.ass", "*.ssa", "*.vtt", "*.sub", "*.sup"]
+    _video_extensions = {".mkv", ".mp4", ".ts", ".m2ts", ".avi", ".m4v", ".mov", ".mpg", ".mpeg", ".wmv", ".webm"}
+    _subtitle_extensions = {".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"}
 
     @classmethod
     def _list_dir_files_by_patterns(cls, root_dir: str, patterns: Sequence[str]) -> list[str]:
@@ -111,6 +113,21 @@ class TorrentCreator:
         for pattern in patterns:
             files.extend(glob.glob(os.path.join(root_dir, pattern)))
         return [os.path.abspath(f) for f in files if os.path.isfile(f)]
+
+    @classmethod
+    def _list_dir_files_by_extensions(cls, root_dir: str, extensions: set[str]) -> list[str]:
+        files: list[str] = []
+        try:
+            for entry in os.listdir(root_dir):
+                full_path = os.path.abspath(os.path.join(root_dir, entry))
+                if not os.path.isfile(full_path):
+                    continue
+                ext = os.path.splitext(entry)[1].lower()
+                if ext in extensions:
+                    files.append(full_path)
+        except OSError:
+            return []
+        return files
 
     @staticmethod
     def calculate_piece_size(
@@ -178,7 +195,8 @@ class TorrentCreator:
 
     @staticmethod
     def build_mkbrr_exclude_string(root_folder: str, filelist: Sequence[str]) -> str:
-        manual_patterns = ["*.nfo", "*.jpg", "*.png", '*.srt', '*.sub', '*.vtt', '*.ssa', '*.ass', "*.txt", "*.xml"]
+        manual_patterns = ["*.nfo", "*.jpg", "*.png", '*.srt', '*.sub', '*.vtt', '*.ssa', '*.ass', '*.sup', "*.txt", "*.xml"]
+        manual_extensions = {".nfo", ".jpg", ".png", ".srt", ".sub", ".vtt", ".ssa", ".ass", ".sup", ".txt", ".xml"}
         keep_set = {os.path.abspath(f) for f in filelist}
 
         exclude_files: set[str] = set()
@@ -187,7 +205,7 @@ class TorrentCreator:
                 full_path = os.path.abspath(os.path.join(dirpath, fname))
                 if full_path in keep_set:
                     continue
-                if any(fnmatch.fnmatch(fname, pat) for pat in manual_patterns):
+                if os.path.splitext(fname)[1].lower() in manual_extensions:
                     continue
                 exclude_files.add(fname)
 
@@ -237,7 +255,7 @@ class TorrentCreator:
                     elif not meta.get('tv_pack', False):
                         folder_name = os.path.basename(str(path))
                         include_files = {f"{folder_name}/{os.path.basename(f)}" for f in meta['filelist']}
-                        sidecar_subtitles = cls._list_dir_files_by_patterns(str(path), cls._subtitle_include_patterns)
+                        sidecar_subtitles = cls._list_dir_files_by_extensions(str(path), cls._subtitle_extensions)
                         include_files.update(f"{folder_name}/{os.path.basename(f)}" for f in sidecar_subtitles)
                         include = sorted(include_files)
                         exclude = ["*", "*/**"]
@@ -254,8 +272,8 @@ class TorrentCreator:
                     elif not meta.get('tv_pack', False):
                         path_dir = os.fspath(path)
                         os.chdir(path_dir)
-                        video_globs = cls._list_dir_files_by_patterns(path_dir, cls._video_include_patterns)
-                        subtitle_globs = cls._list_dir_files_by_patterns(path_dir, cls._subtitle_include_patterns)
+                        video_globs = cls._list_dir_files_by_extensions(path_dir, cls._video_extensions)
+                        subtitle_globs = cls._list_dir_files_by_extensions(path_dir, cls._subtitle_extensions)
                         globs = [os.path.basename(f) for f in video_globs]
                         no_sample_globs = [
                             os.path.abspath(f"{path_dir}{os.sep}{file}") for file in globs
@@ -263,8 +281,12 @@ class TorrentCreator:
                         ]
                         if len(no_sample_globs) == 1 and len(subtitle_globs) == 0:
                             path = meta['filelist'][0]
-                        exclude = ["*.*", "*sample.mkv", "!sample*.*"] if not meta['is_disc'] else []
-                        include = [*cls._video_include_patterns, *cls._subtitle_include_patterns] if not meta['is_disc'] else []
+                        if not meta['is_disc']:
+                            include = sorted({os.path.basename(f) for f in video_globs + subtitle_globs})
+                            exclude = ["*", "*/**"]
+                        else:
+                            exclude = []
+                            include = []
                     else:
                         folder_name = os.path.basename(str(path))
                         include = [

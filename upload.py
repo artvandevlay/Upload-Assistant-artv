@@ -1096,6 +1096,27 @@ async def process_meta(meta: Meta, base_dir: str, bot: Any = None) -> None:
                 await progress_task
 
         torrent_path = os.path.abspath(f"{meta['base_dir']}/tmp/{meta['uuid']}/BASE.torrent")
+
+        subtitle_extensions = {'.srt', '.ass', '.ssa', '.vtt', '.sub', '.sup'}
+        source_has_sidecar_subtitle = False
+        source_path_value = meta.get('path')
+        if meta.get('isdir', False) and isinstance(source_path_value, str) and os.path.isdir(source_path_value):
+            try:
+                for entry in os.listdir(source_path_value):
+                    full_path = os.path.join(source_path_value, entry)
+                    if os.path.isfile(full_path) and os.path.splitext(entry)[1].lower() in subtitle_extensions:
+                        source_has_sidecar_subtitle = True
+                        break
+            except OSError:
+                source_has_sidecar_subtitle = False
+
+        def torrent_has_subtitle_file(path_to_torrent: str) -> bool:
+            try:
+                torrent_obj = Torrent.read(path_to_torrent)
+                return any(str(file).lower().endswith(tuple(subtitle_extensions)) for file in torrent_obj.files)
+            except Exception:
+                return False
+
         if meta.get('force_recheck', False):
             waiter = Wait(config)
             await waiter.select_and_recheck_best_torrent(meta, meta['path'], check_interval=5)
@@ -1105,6 +1126,12 @@ async def process_meta(meta: Meta, base_dir: str, bot: Any = None) -> None:
                 reuse_torrent = await client.find_existing_torrent(meta)
                 if reuse_torrent is not None:
                     await TorrentCreator.create_base_from_existing_torrent(reuse_torrent, meta['base_dir'], meta['uuid'])
+                    if source_has_sidecar_subtitle and not torrent_has_subtitle_file(torrent_path):
+                        if meta.get('debug', False):
+                            console.print("[yellow]Reused torrent is missing subtitle sidecar; forcing BASE.torrent regeneration.[/yellow]")
+                        with contextlib.suppress(OSError):
+                            os.remove(torrent_path)
+                        reuse_torrent = None
 
             if meta['nohash'] is False and reuse_torrent is None:
                 await TorrentCreator.create_torrent(meta, Path(meta['path']), "BASE")
@@ -1112,6 +1139,16 @@ async def process_meta(meta: Meta, base_dir: str, bot: Any = None) -> None:
                 meta['client'] = "none"
 
         elif os.path.exists(torrent_path) and meta.get('rehash', False) is True and meta['nohash'] is False:
+            await TorrentCreator.create_torrent(meta, Path(meta['path']), "BASE")
+
+        if (
+            source_has_sidecar_subtitle
+            and os.path.exists(torrent_path)
+            and not torrent_has_subtitle_file(torrent_path)
+            and not meta['nohash']
+        ):
+            if meta.get('debug', False):
+                console.print("[yellow]BASE.torrent missing subtitle sidecar; recreating BASE.torrent.[/yellow]")
             await TorrentCreator.create_torrent(meta, Path(meta['path']), "BASE")
 
         if os.path.exists(torrent_path):
