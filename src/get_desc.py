@@ -57,11 +57,11 @@ def get_sidecar_subtitle_extension_in_source_folder(meta: dict[str, Any]) -> str
 
 def build_subtitle_notice(subtitle_extension: str) -> str:
     return (
-        "[hr][center][size=16][b]Legenda:[/b] PT-BR — arquivo incluso separadamente "
-        f"({subtitle_extension})"
+        "[center][quote][size=15][color=#FEB100][b]Legenda:[/b][/color] "
+        "[color=#DDDDDD]PT-BR[/color] "
+        "[color=#AAAAAA]— arquivo incluso separadamente "
+        f"({subtitle_extension})[/color][/size][/quote][/center][hr]"
     )
-
-    return False
 
 
 def html_to_bbcode(text: str) -> str:
@@ -230,7 +230,7 @@ async def gen_desc(
 
     subtitle_extension = get_sidecar_subtitle_extension_in_source_folder(meta)
     if subtitle_extension:
-        description_lines.append(build_subtitle_notice(subtitle_extension))
+        description_lines.insert(0, build_subtitle_notice(subtitle_extension))
 
     if description_lines:
         description_lines.append("")
@@ -582,6 +582,10 @@ class DescriptionBuilder:
 
         desc_parts: list[str] = []
 
+        subtitle_extension = get_sidecar_subtitle_extension_in_source_folder(meta)
+        if subtitle_extension:
+            desc_parts.append(build_subtitle_notice(subtitle_extension))
+
         # Custom Header
         if not desc_header:
             desc_header = await self.get_custom_header()
@@ -696,12 +700,6 @@ class DescriptionBuilder:
         description = bbcode.remove_extra_lines(description)
         if comparison is False:
             description = bbcode.convert_comparison_to_collapse(description, 1000)
-
-        subtitle_extension = get_sidecar_subtitle_extension_in_source_folder(meta)
-        if subtitle_extension:
-            subtitle_notice = build_subtitle_notice(subtitle_extension)
-            if subtitle_notice not in description:
-                description = f"{description}\n{subtitle_notice}" if description.strip() else subtitle_notice
 
         if meta['debug']:
             desc_file = f"{meta['base_dir']}/tmp/{meta['uuid']}/[{self.tracker}]DESCRIPTION.txt"
