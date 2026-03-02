@@ -195,8 +195,9 @@ class TorrentCreator:
 
     @staticmethod
     def build_mkbrr_exclude_string(root_folder: str, filelist: Sequence[str]) -> str:
-        manual_patterns = ["*.nfo", "*.jpg", "*.png", '*.srt', '*.sub', '*.vtt', '*.ssa', '*.ass', '*.sup', "*.txt", "*.xml"]
-        manual_extensions = {".nfo", ".jpg", ".png", ".srt", ".sub", ".vtt", ".ssa", ".ass", ".sup", ".txt", ".xml"}
+        manual_patterns = ["*.nfo", "*.jpg", "*.png", "*.txt", "*.xml"]
+        manual_extensions = {".nfo", ".jpg", ".png", ".txt", ".xml"}
+        subtitle_extensions = {".srt", ".sub", ".vtt", ".ssa", ".ass", ".sup"}
         keep_set = {os.path.abspath(f) for f in filelist}
 
         exclude_files: set[str] = set()
@@ -205,7 +206,8 @@ class TorrentCreator:
                 full_path = os.path.abspath(os.path.join(dirpath, fname))
                 if full_path in keep_set:
                     continue
-                if os.path.splitext(fname)[1].lower() in manual_extensions:
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in manual_extensions or ext in subtitle_extensions:
                     continue
                 exclude_files.add(fname)
 
