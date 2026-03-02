@@ -389,7 +389,7 @@ class QueueManager:
         paths: Sequence[str],
         base_dir: str,
     ) -> tuple[QueueList, Optional[str]]:
-        allowed_extensions = ['.mkv', '.mp4', '.ts']
+        allowed_extensions = ['.mkv', '.mp4', '.ts', '.m2ts', '.avi', '.m4v', '.mov', '.mpg', '.mpeg', '.wmv', '.webm']
         queue: list[str] = []
 
         if meta.get('site_upload'):

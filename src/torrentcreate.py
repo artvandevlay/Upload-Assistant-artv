@@ -102,6 +102,15 @@ class TorrentCreator:
     _create_torrent_semaphore = asyncio.Semaphore(1)
     _create_torrent_inflight = 0
     _torf_start_time = time.time()
+    _video_include_patterns = ["*.mkv", "*.mp4", "*.ts", "*.m2ts", "*.avi", "*.m4v", "*.mov", "*.mpg", "*.mpeg", "*.wmv", "*.webm"]
+    _subtitle_include_patterns = ["*.srt", "*.ass", "*.ssa", "*.vtt", "*.sub", "*.sup"]
+
+    @classmethod
+    def _list_dir_files_by_patterns(cls, root_dir: str, patterns: Sequence[str]) -> list[str]:
+        files: list[str] = []
+        for pattern in patterns:
+            files.extend(glob.glob(os.path.join(root_dir, pattern)))
+        return [os.path.abspath(f) for f in files if os.path.isfile(f)]
 
     @staticmethod
     def calculate_piece_size(
@@ -222,21 +231,21 @@ class TorrentCreator:
                     # specific nfo catch for certain trackers. BASE catch should prevent unintentional inclusion by default
                     if meta.get('keep_nfo', False) and "BASE" not in output_filename:
                         console.print('--keep-nfo was specified. Including NFO files in torrent.')
-                        include = ["*.mkv", "*.mp4", "*.ts", "*.nfo"]
+                        include = [*cls._video_include_patterns, *cls._subtitle_include_patterns, "*.nfo"]
                         exclude = ["*.*", "*sample.mkv"]
                         meta['mkbrr'] = False
                     elif not meta.get('tv_pack', False):
                         folder_name = os.path.basename(str(path))
-                        include = [
-                            f"{folder_name}/{os.path.basename(f)}"
-                            for f in meta['filelist']
-                        ]
+                        include_files = {f"{folder_name}/{os.path.basename(f)}" for f in meta['filelist']}
+                        sidecar_subtitles = cls._list_dir_files_by_patterns(str(path), cls._subtitle_include_patterns)
+                        include_files.update(f"{folder_name}/{os.path.basename(f)}" for f in sidecar_subtitles)
+                        include = sorted(include_files)
                         exclude = ["*", "*/**"]
 
                 elif meta['isdir']:
                     if meta.get('keep_nfo', False) and not meta.get('is_disc', False) and "BASE" not in output_filename:
                         console.print('--keep-nfo was specified. Including NFO files in torrent.')
-                        include = ["*.mkv", "*.mp4", "*.ts", "*.nfo"]
+                        include = [*cls._video_include_patterns, *cls._subtitle_include_patterns, "*.nfo"]
                         exclude = ["*.*", "*sample.mkv"]
                         meta['mkbrr'] = False
                     elif meta.get('is_disc', False):
@@ -245,17 +254,17 @@ class TorrentCreator:
                     elif not meta.get('tv_pack', False):
                         path_dir = os.fspath(path)
                         os.chdir(path_dir)
-                        globs = [os.path.basename(f) for f in glob.glob(os.path.join(path_dir, "*.mkv"))] + [
-                            os.path.basename(f) for f in glob.glob(os.path.join(path_dir, "*.mp4"))
-                        ] + [os.path.basename(f) for f in glob.glob(os.path.join(path_dir, "*.ts"))]
+                        video_globs = cls._list_dir_files_by_patterns(path_dir, cls._video_include_patterns)
+                        subtitle_globs = cls._list_dir_files_by_patterns(path_dir, cls._subtitle_include_patterns)
+                        globs = [os.path.basename(f) for f in video_globs]
                         no_sample_globs = [
                             os.path.abspath(f"{path_dir}{os.sep}{file}") for file in globs
                             if not file.lower().endswith('sample.mkv') or "!sample" in file.lower()
                         ]
-                        if len(no_sample_globs) == 1:
+                        if len(no_sample_globs) == 1 and len(subtitle_globs) == 0:
                             path = meta['filelist'][0]
                         exclude = ["*.*", "*sample.mkv", "!sample*.*"] if not meta['is_disc'] else []
-                        include = ["*.mkv", "*.mp4", "*.ts"] if not meta['is_disc'] else []
+                        include = [*cls._video_include_patterns, *cls._subtitle_include_patterns] if not meta['is_disc'] else []
                     else:
                         folder_name = os.path.basename(str(path))
                         include = [
@@ -265,7 +274,7 @@ class TorrentCreator:
                         exclude = ["*", "*/**"]
                 else:
                     exclude = ["*.*", "*sample.mkv", "!sample*.*"] if not meta['is_disc'] else []
-                    include = ["*.mkv", "*.mp4", "*.ts"] if not meta['is_disc'] else []
+                    include = [*cls._video_include_patterns, *cls._subtitle_include_patterns] if not meta['is_disc'] else []
 
                 # If using mkbrr, run the external application
                 if meta.get('mkbrr'):

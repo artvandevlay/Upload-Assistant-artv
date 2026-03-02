@@ -21,6 +21,49 @@ from src.trackers.COMMON import COMMON
 from src.uploadscreens import UploadScreensManager
 
 
+SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"}
+
+
+def get_sidecar_subtitle_extension_in_source_folder(meta: dict[str, Any]) -> str | None:
+    if not meta.get("isdir", False):
+        return None
+
+    source_path = meta.get("path")
+    if not isinstance(source_path, str) or not os.path.isdir(source_path):
+        return None
+
+    found_extensions: set[str] = set()
+    try:
+        for entry in os.listdir(source_path):
+            full_path = os.path.join(source_path, entry)
+            if not os.path.isfile(full_path):
+                continue
+            extension = os.path.splitext(entry)[1].lower()
+            if extension in SUBTITLE_EXTENSIONS:
+                found_extensions.add(extension)
+    except OSError:
+        return None
+
+    if not found_extensions:
+        return None
+
+    preferred_order = [".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"]
+    for extension in preferred_order:
+        if extension in found_extensions:
+            return extension
+
+    return sorted(found_extensions)[0]
+
+
+def build_subtitle_notice(subtitle_extension: str) -> str:
+    return (
+        "[hr][center][size=16][b]Legenda:[/b] PT-BR — arquivo incluso separadamente "
+        f"({subtitle_extension})"
+    )
+
+    return False
+
+
 def html_to_bbcode(text: str) -> str:
     """Convert HTML tags to BBCode format."""
     if not text:
@@ -184,6 +227,10 @@ async def gen_desc(
         if description_text:
             description_lines = [description_text]
             content_written = True
+
+    subtitle_extension = get_sidecar_subtitle_extension_in_source_folder(meta)
+    if subtitle_extension:
+        description_lines.append(build_subtitle_notice(subtitle_extension))
 
     if description_lines:
         description_lines.append("")
@@ -629,7 +676,7 @@ class DescriptionBuilder:
 
         # UA Signature
         if not signature:
-            signature = f"[right][url=https://github.com/Audionut/Upload-Assistant][size=4]{meta['ua_signature']}[/size][/url][/right]"
+            #signature = f"[right][url=https://github.com/Audionut/Upload-Assistant][size=4]{meta['ua_signature']}[/size][/url][/right]"
             if self.tracker == "HUNO":
                 signature = signature.replace("[size=4]", "[size=8]")
         desc_parts.append(signature)
@@ -649,6 +696,12 @@ class DescriptionBuilder:
         description = bbcode.remove_extra_lines(description)
         if comparison is False:
             description = bbcode.convert_comparison_to_collapse(description, 1000)
+
+        subtitle_extension = get_sidecar_subtitle_extension_in_source_folder(meta)
+        if subtitle_extension:
+            subtitle_notice = build_subtitle_notice(subtitle_extension)
+            if subtitle_notice not in description:
+                description = f"{description}\n{subtitle_notice}" if description.strip() else subtitle_notice
 
         if meta['debug']:
             desc_file = f"{meta['base_dir']}/tmp/{meta['uuid']}/[{self.tracker}]DESCRIPTION.txt"
