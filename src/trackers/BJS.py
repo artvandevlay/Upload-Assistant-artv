@@ -65,8 +65,14 @@ class BJS:
         if os.path.isdir(video_path):
             try:
                 if any(file_name.lower().endswith(subtitle_extensions) for file_name in os.listdir(video_path)):
-                    console.print(f'{self.tracker}: [bold red]ERRO: Esta ferramenta não suporta o upload de legendas em arquivos separados.[/bold red]')
-                    return False
+                    if meta.get('keep_folder', False):
+                        console.print(
+                            f"{self.tracker}: [yellow]Aviso: legenda externa detectada com --keep-folder. O upload continuará, "
+                            "mas o tracker pode rejeitar se arquivos de legenda separados não forem permitidos.[/yellow]"
+                        )
+                    else:
+                        console.print(f'{self.tracker}: [bold red]ERRO: Esta ferramenta não suporta o upload de legendas em arquivos separados.[/bold red]')
+                        return False
             except OSError:
                 return should_continue
 
