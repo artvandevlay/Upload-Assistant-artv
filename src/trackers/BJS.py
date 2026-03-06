@@ -57,12 +57,18 @@ class BJS:
 
         # Stops uploading when an external subtitle is detected
         video_path = meta.get('path', '')
-        directory: str = video_path if os.path.isdir(video_path) else os.path.dirname(video_path)
         subtitle_extensions = ('.srt', '.sub', '.ass', '.ssa', '.idx', '.smi', '.psb')
 
-        if any(f.lower().endswith(subtitle_extensions) for f in os.listdir(directory)):
-            console.print(f'{self.tracker}: [bold red]ERRO: Esta ferramenta não suporta o upload de legendas em arquivos separados.[/bold red]')
-            return False
+        if not isinstance(video_path, str) or not video_path:
+            return should_continue
+
+        if os.path.isdir(video_path):
+            try:
+                if any(file_name.lower().endswith(subtitle_extensions) for file_name in os.listdir(video_path)):
+                    console.print(f'{self.tracker}: [bold red]ERRO: Esta ferramenta não suporta o upload de legendas em arquivos separados.[/bold red]')
+                    return False
+            except OSError:
+                return should_continue
 
         return should_continue
 

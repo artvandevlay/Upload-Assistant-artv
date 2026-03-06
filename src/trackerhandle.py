@@ -125,6 +125,14 @@ async def process_trackers(
         disctype_value = str(disctype) if disctype is not None else ""
         tracker = tracker.replace(" ", "").upper().strip()
 
+        upload_trackers = set(api_trackers) | set(other_api_trackers) | set(http_trackers) | {"THR", "PTP"}
+        if meta.get('debug', False) and tracker in upload_trackers:
+            tracker_status = cast(StatusDict, meta.get('tracker_status') or {})
+            upload_status = cast(Mapping[str, Any], tracker_status.get(tracker, {})).get('upload', False)
+            if upload_status:
+                console.print(f"[yellow]Debug mode enabled: skipping actual upload to {tracker}.[/yellow]")
+            return
+
         if tracker in api_trackers:
             tracker_status = cast(StatusDict, meta.get('tracker_status') or {})
             upload_status = cast(Mapping[str, Any], tracker_status.get(tracker, {})).get('upload', False)
