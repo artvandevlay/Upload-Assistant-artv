@@ -252,17 +252,58 @@ class ACM:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(url=self.upload_url, files=files, data=data, headers=headers, params=params)
                 try:
-                    response_data = response.json()
+                    try:
+                        response_data = response.json()
+                    except ValueError:
+                        meta['tracker_status'][self.tracker]['status_message'] = (
+                            f'data error: HTTP {response.status_code} - Non-JSON response: {response.text}'
+                        )
+                        return False
+
+                    if response.status_code not in (200, 201):
+                        meta['tracker_status'][self.tracker]['status_message'] = (
+                            f"data error: HTTP {response.status_code} - {response_data}"
+                        )
+                        return False
+
+                    if not isinstance(response_data, dict):
+                        meta['tracker_status'][self.tracker]['status_message'] = (
+                            f"data error: Unexpected API response format: {response_data}"
+                        )
+                        return False
+
+                    success = response_data.get('success')
+                    if success is False:
+                        validation_errors = response_data.get('errors')
+                        if validation_errors:
+                            meta['tracker_status'][self.tracker]['status_message'] = (
+                                f"data error: Validation failed - {validation_errors}"
+                            )
+                        else:
+                            meta['tracker_status'][self.tracker]['status_message'] = (
+                                f"data error: ACM API returned failure - {response_data}"
+                            )
+                        return False
+
+                    downurl = response_data.get('data')
+                    if not isinstance(downurl, str) or '/api/torrents/' not in downurl:
+                        message = response_data.get('message') or response_data.get('error') or response_data
+                        meta['tracker_status'][self.tracker]['status_message'] = (
+                            f"data error: ACM response missing torrent URL - {message}"
+                        )
+                        return False
+
+                    torrent_id_match = re.search(r'/api/torrents/(\d+)', downurl)
+                    if torrent_id_match:
+                        meta['tracker_status'][self.tracker]['torrent_id'] = torrent_id_match.group(1)
+
                     meta['tracker_status'][self.tracker]['status_message'] = response_data
-                    # adding torrent link to comment of torrent file
-                    t_id = response_data['data'].split('.')[1].split('/')[3]
-                    meta['tracker_status'][self.tracker]['torrent_id'] = t_id
                     await self.common.download_tracker_torrent(
                         meta,
                         self.tracker,
                         headers=headers,
                         params=params,
-                        downurl=response_data['data']
+                        downurl=downurl
                     )
                     return True
                 except httpx.TimeoutException:
@@ -271,8 +312,10 @@ class ACM:
                 except httpx.RequestError as e:
                     meta['tracker_status'][self.tracker]['status_message'] = f'data error: Unable to upload to {self.tracker}: {e}'
                     return False
-                except Exception:
-                    meta['tracker_status'][self.tracker]['status_message'] = f'data error: It may have uploaded, go check: {self.tracker}'
+                except Exception as e:
+                    meta['tracker_status'][self.tracker]['status_message'] = (
+                        f'data error: Unexpected ACM upload error: {e}. Response body: {response.text}'
+                    )
                     return False
         else:
             console.print("[cyan]ACM Request Data:")
