@@ -1404,9 +1404,31 @@ class BJS:
 
         # Only upload images if not debugging
         if not meta.get('debug', False):
+            screenshots = await self.get_screenshots(meta)
+            cover_image = await self.get_cover(meta)
+
+            if not cover_image:
+                # BJS requires a non-empty cover image; fallback to first valid screenshot/image link.
+                fallback_cover = next((url for url in screenshots if isinstance(url, str) and url.startswith('http')), None)
+                if not fallback_cover:
+                    fallback_cover = next(
+                        (
+                            str(img.get('raw_url'))
+                            for img in meta.get('image_list', [])
+                            if isinstance(img.get('raw_url'), str) and str(img.get('raw_url')).startswith('http')
+                        ),
+                        None,
+                    )
+
+                if fallback_cover:
+                    cover_image = fallback_cover
+                    console.print(
+                        f"{self.tracker}: [yellow]Cover upload returned no URL; using fallback image link for required 'capa' field.[/yellow]"
+                    )
+
             data.update({
-                'image': await self.get_cover(meta),
-                'screenshots[]': await self.get_screenshots(meta),
+                'image': cover_image,
+                'screenshots[]': screenshots,
             })
 
         return data
