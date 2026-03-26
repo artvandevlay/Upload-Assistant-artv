@@ -892,13 +892,15 @@ class BJS:
         
         # Prepare file upload - rely on session cookies for authentication
         files = {'file': (filename, image_bytes, 'image/png')}
+        # Gazelle requires the auth token even for AJAX file uploads.
+        auth_data = {'auth': BJS.secret_token} if BJS.secret_token else {}
 
         try:
             # Debug info about the upload
             console.print(f'{self.tracker}: [yellow]DEBUG: Uploading {filename} ({len(image_bytes)} bytes) to {upload_url}[/yellow]')
             
             response = await self.session.post(
-                upload_url, headers=headers, files=files, timeout=120
+                upload_url, headers=headers, files=files, data=auth_data, timeout=120
             )
             response.raise_for_status()
             
