@@ -881,22 +881,23 @@ class BJS:
 
         return keyword_map.get(source_type.lower(), 'Outro')
 
-    async def img_host(self, image_bytes: bytes, filename: str) -> Optional[str]:
-        upload_url = f'{self.base_url}/ajax.php?action=screen_up'
+    async def img_host(self, image_bytes:bytes, filename: str) -> Optional[str]:
+        token_to_use = BJS.secret_token or ''
+        
+        # Try with token as query parameter first
+        upload_url = f'{self.base_url}/ajax.php?action=screen_up&auth={token_to_use}' if token_to_use else f'{self.base_url}/ajax.php?action=screen_up'
+        
         headers = {
             'Referer': f'{self.base_url}/upload.php',
             'X-Requested-With': 'XMLHttpRequest',
             'Accept': 'application/json',
         }
-        # Include auth token with screenshot uploads
-        post_data = {
-            'auth': BJS.secret_token,
-        }
+        
         files = {'file': (filename, image_bytes, 'image/png')}
 
         try:
             response = await self.session.post(
-                upload_url, headers=headers, data=post_data, files=files, timeout=120
+                upload_url, headers=headers, files=files, timeout=120
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()
@@ -910,7 +911,10 @@ class BJS:
                 if error_msg:
                     console.print(f'{self.tracker}: [bold red]Screenshot upload error: {error_msg}[/bold red]')
                 else:
-                    console.print(f'{self.tracker}: [bold red]The image host appears to be down. Response: {data}[/bold red]')
+                    if not token_to_use:
+                        console.print(f'{self.tracker}: [bold red]The image host appears to be down (no auth token available). Response: {data}[/bold red]')
+                    else:
+                        console.print(f'{self.tracker}: [bold red]The image host appears to be down. Response: {data}[/bold red]')
 
             return img_url
         except Exception as e:

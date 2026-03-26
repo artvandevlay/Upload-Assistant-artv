@@ -272,7 +272,10 @@ class CookieValidator:
                         importlib.import_module(f'src.trackers.{tracker}'),
                         tracker
                     )
-                    cls.secret_token = str(match.group(1))
+                    extracted_token = str(match.group(1))
+                    cls.secret_token = extracted_token
+                    if meta.get('debug', False):
+                        console.print(f"{tracker}: [cyan]DEBUG: Extracted auth token: {extracted_token[:20]}...{extracted_token[-10:] if len(extracted_token) > 30 else ''}[/cyan]")
 
                 # Save cookies only after a confirmed valid login
                 await self.save_session_cookies(tracker, cookie_jar)
