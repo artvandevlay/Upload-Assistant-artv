@@ -883,83 +883,27 @@ class BJS:
 
     async def img_host(self, image_bytes: bytes, filename: str) -> Optional[str]:
         upload_url = f'{self.base_url}/ajax.php?action=screen_up'
-        
         headers = {
             'Referer': f'{self.base_url}/upload.php',
             'X-Requested-With': 'XMLHttpRequest',
             'Accept': 'application/json',
         }
-        
-        # Prepare file upload - rely on session cookies for authentication
         files = {'file': (filename, image_bytes, 'image/png')}
-        # Gazelle requires the auth token even for AJAX file uploads.
-        auth_data = {'auth': BJS.secret_token} if BJS.secret_token else {}
 
         try:
-            # Debug info about the upload
-            console.print(f'{self.tracker}: [yellow]DEBUG: Uploading {filename} ({len(image_bytes)} bytes) to {upload_url}[/yellow]')
-            
             response = await self.session.post(
-                upload_url, headers=headers, files=files, data=auth_data, timeout=120
+                upload_url, headers=headers, files=files, timeout=120
             )
             response.raise_for_status()
-            
-            # Debug: Log raw response if available
-            console.print(f'{self.tracker}: [cyan]DEBUG: Response status {response.status_code}[/cyan]')
-            
-            data: Any = response.json()
+            data: dict[str, Any] = response.json()
 
-            def _extract_url(payload: Any) -> Optional[str]:
-                # BJS can return different JSON shapes depending on backend/plugin.
-                if isinstance(payload, str):
-                    candidate = payload.replace('\\/', '/')
-                    return candidate if candidate.startswith('http') else None
-
-                if not isinstance(payload, dict):
-                    return None
-
-                direct_keys = ('url', 'link', 'image', 'src', 'thumb')
-                for key in direct_keys:
-                    value = payload.get(key)
-                    if isinstance(value, str):
-                        candidate = value.replace('\\/', '/')
-                        if candidate.startswith('http'):
-                            return candidate
-                    if isinstance(value, dict):
-                        nested = _extract_url(value)
-                        if nested:
-                            return nested
-
-                nested_keys = ('data', 'result', 'response', 'payload', 'file', 'image')
-                for key in nested_keys:
-                    nested_payload = payload.get(key)
-                    nested_url = _extract_url(nested_payload)
-                    if nested_url:
-                        return nested_url
-
-                return None
-
-            img_url = _extract_url(data)
-            if img_url:
-                return img_url
-
-            error_msg = ''
-            if isinstance(data, dict):
-                error_msg = str(data.get('error') or data.get('message') or data.get('msg') or '').strip()
-
-            if error_msg:
-                if any(token in error_msg.lower() for token in ('login', 'session', 'auth', 'expired')):
-                    console.print(
-                        f'{self.tracker}: [bold red]Screenshot upload failed: possible expired/invalid session cookie. Message: {error_msg}[/bold red]'
-                    )
-                else:
-                    console.print(f'{self.tracker}: [bold red]Screenshot upload error: {error_msg}[/bold red]')
+            img_url = None
+            if data.get('url') and str(data.get('url', '')).startswith('http'):
+                img_url = str(data.get('url', '')).replace('\\/', '/')
             else:
-                console.print(
-                    f'{self.tracker}: [bold red]Screenshot upload returned no usable image URL. Raw response: {data}[/bold red]'
-                )
+                console.print(f'{self.tracker}: [bold red]The image host appears to be down.[/bold red]')
 
-            return None
+            return img_url
         except Exception as e:
             console.print(f'Exceção no upload de {filename}: {e}', markup=False)
             return None
@@ -971,6 +915,8 @@ class BJS:
             return None
 
         cover_tmdb_url = f'https://image.tmdb.org/t/p/w500{cover_path}'
+        if BJS.already_has_the_info:
+            return cover_tmdb_url
 
         try:
             response = await self.session.get(cover_tmdb_url, timeout=120)
@@ -1009,11 +955,6 @@ class BJS:
 
         results: list[str] = []
 
-        # Keep existing uploaded-host links as a fallback when BJS screen_up returns null URLs.
-        existing_image_links = [
-            img.get("raw_url") for img in meta.get("image_list", []) if img.get("raw_url")
-        ]
-
         # Upload menu images
         for url in disc_menu_links:
             result = await upload_remote_file(url)
@@ -1038,19 +979,6 @@ class BJS:
                 result = await coro
                 if result:
                     results.append(result)
-
-        if len(results) < 2 and existing_image_links:
-            fallback_candidates = [
-                str(url) for url in existing_image_links
-                if isinstance(url, str) and url.startswith('http') and url not in results
-            ]
-            need = max(0, 6 - len(results))
-            results.extend(fallback_candidates[:need])
-
-            if fallback_candidates:
-                console.print(
-                    f"{self.tracker}: [yellow]Using existing image links as fallback because screen_up returned no usable URLs.[/yellow]"
-                )
 
         return results
 
@@ -1404,35 +1332,9 @@ class BJS:
 
         # Only upload images if not debugging
         if not meta.get('debug', False):
-            screenshots = await self.get_screenshots(meta)
-            cover_image = await self.get_cover(meta)
-
-            if not cover_image:
-                # BJS requires a non-empty cover image; fallback to first valid screenshot/image link.
-                fallback_cover = next((url for url in screenshots if isinstance(url, str) and url.startswith('http')), None)
-                if not fallback_cover:
-                    fallback_cover = next(
-                        (
-                            str(img.get('raw_url'))
-                            for img in meta.get('image_list', [])
-                            if isinstance(img.get('raw_url'), str) and str(img.get('raw_url')).startswith('http')
-                        ),
-                        None,
-                    )
-
-                if fallback_cover:
-                    cover_image = fallback_cover
-                    console.print(
-                        f"{self.tracker}: [yellow]Cover upload returned no URL; using fallback image link for required 'capa' field.[/yellow]"
-                    )
-
-            console.print(
-                f"{self.tracker}: [cyan]DEBUG: cover_image value being submitted: {cover_image!r}[/cyan]"
-            )
-
             data.update({
-                'image': cover_image,
-                'screenshots[]': screenshots,
+                'image': await self.get_cover(meta),
+                'screenshots[]': await self.get_screenshots(meta),
             })
 
         return data
@@ -1514,9 +1416,6 @@ class BJS:
         if not meta.get("debug", False) and len(data["screenshots[]"]) < 2:
             return "The number of successful screenshots uploaded is less than 2."
 
-        if not meta.get("debug", False) and not data.get("image"):
-            return "Cover image (capa) is empty — get_cover() and all fallbacks failed. Check session cookies and image_list."
-
         if any(
             value == "skipped" for value in (data.get("diretor"), data.get("elenco"), data.get("creators"))
         ):
@@ -1544,9 +1443,8 @@ class BJS:
                 torrent_field_name='file_input',
                 upload_cookies=self.session.cookies,
                 upload_url=f"{self.base_url}/upload.php",
-                id_pattern=r'(?:torrentid=|[?&]id=|torrents\.php\?id=)(\d+)',
-                # The success marker changed over time; rely on torrentid extraction from URL/body.
-                success_text="",
+                id_pattern=r'torrentid=(\d+)',
+                success_text="action=download&id=",
             )
 
         return is_uploaded
