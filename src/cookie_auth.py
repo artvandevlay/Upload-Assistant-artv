@@ -560,6 +560,12 @@ class CookieAuthUploader:
                     elif error_text and error_text not in response.text:
                         success = True
 
+                    # Fallback success detection for trackers that redirect to/details page
+                    # but no longer include a stable success_text marker.
+                    elif id_pattern:
+                        if re.search(id_pattern, str(response.url)) or re.search(id_pattern, response.text):
+                            success = True
+
                     if success:
                         await self.handle_successful_upload(
                             meta,
@@ -703,6 +709,17 @@ class CookieAuthUploader:
         response: httpx.Response,
     ) -> bool:
         message = ["data error: The upload appears to have failed. It may have uploaded, go check."]
+        response_url = str(response.url)
+        message.append(f"Response URL: {response_url}")
+
+        lower_text = response.text.lower()
+        if 'login.php' in lower_text or 'logout' not in lower_text and 'password' in lower_text:
+            message.append("Possible auth/session issue detected in response page.")
+        if 'csrf' in lower_text or 'token' in lower_text:
+            message.append("Possible token/auth field mismatch detected in response page.")
+        if 'error' in lower_text:
+            message.append("Response contains error markers; check saved HTML for exact tracker message.")
+
         if success_text:
             message.append(f"Could not find the success text '{success_text}' in the response.")
         elif error_text:
