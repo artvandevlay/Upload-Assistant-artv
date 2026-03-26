@@ -881,11 +881,9 @@ class BJS:
 
         return keyword_map.get(source_type.lower(), 'Outro')
 
-    async def img_host(self, image_bytes:bytes, filename: str) -> Optional[str]:
+    async def img_host(self, image_bytes: bytes, filename: str) -> Optional[str]:
         token_to_use = BJS.secret_token or ''
-        
-        # Try with token as query parameter first
-        upload_url = f'{self.base_url}/ajax.php?action=screen_up&auth={token_to_use}' if token_to_use else f'{self.base_url}/ajax.php?action=screen_up'
+        upload_url = f'{self.base_url}/ajax.php?action=screen_up'
         
         headers = {
             'Referer': f'{self.base_url}/upload.php',
@@ -893,11 +891,17 @@ class BJS:
             'Accept': 'application/json',
         }
         
+        # For multipart uploads, send auth as form field, not query parameter
+        # This goes into the multipart body
+        post_data = {}
+        if token_to_use:
+            post_data['auth'] = token_to_use
+        
         files = {'file': (filename, image_bytes, 'image/png')}
 
         try:
             response = await self.session.post(
-                upload_url, headers=headers, files=files, timeout=120
+                upload_url, headers=headers, data=post_data, files=files, timeout=120
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()
