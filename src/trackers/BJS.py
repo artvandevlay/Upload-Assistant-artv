@@ -1009,6 +1009,11 @@ class BJS:
 
         results: list[str] = []
 
+        # Keep existing uploaded-host links as a fallback when BJS screen_up returns null URLs.
+        existing_image_links = [
+            img.get("raw_url") for img in meta.get("image_list", []) if img.get("raw_url")
+        ]
+
         # Upload menu images
         for url in disc_menu_links:
             result = await upload_remote_file(url)
@@ -1033,6 +1038,19 @@ class BJS:
                 result = await coro
                 if result:
                     results.append(result)
+
+        if len(results) < 2 and existing_image_links:
+            fallback_candidates = [
+                str(url) for url in existing_image_links
+                if isinstance(url, str) and url.startswith('http') and url not in results
+            ]
+            need = max(0, 6 - len(results))
+            results.extend(fallback_candidates[:need])
+
+            if fallback_candidates:
+                console.print(
+                    f"{self.tracker}: [yellow]Using existing image links as fallback because screen_up returned no usable URLs.[/yellow]"
+                )
 
         return results
 
