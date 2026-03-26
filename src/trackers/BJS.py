@@ -901,7 +901,12 @@ class BJS:
             if data.get('url') and str(data.get('url', '')).startswith('http'):
                 img_url = str(data.get('url', '')).replace('\\/', '/')
             else:
-                console.print(f'{self.tracker}: [bold red]The image host appears to be down.[/bold red]')
+                # Check for error messages in the response
+                error_msg = data.get('error') or data.get('message') or data.get('msg', '')
+                if error_msg:
+                    console.print(f'{self.tracker}: [bold red]Screenshot upload error: {error_msg}[/bold red]')
+                else:
+                    console.print(f'{self.tracker}: [bold red]The image host appears to be down. Response: {data}[/bold red]')
 
             return img_url
         except Exception as e:
