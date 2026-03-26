@@ -1516,7 +1516,8 @@ class BJS:
                 upload_cookies=self.session.cookies,
                 upload_url=f"{self.base_url}/upload.php",
                 id_pattern=r'torrentid=(\d+)',
-                success_text="action=download&id=",
+                # The success marker changed over time; rely on torrentid extraction from URL/body.
+                success_text="",
             )
 
         return is_uploaded
