@@ -888,11 +888,15 @@ class BJS:
             'X-Requested-With': 'XMLHttpRequest',
             'Accept': 'application/json',
         }
+        # Include auth token with screenshot uploads
+        post_data = {
+            'auth': BJS.secret_token,
+        }
         files = {'file': (filename, image_bytes, 'image/png')}
 
         try:
             response = await self.session.post(
-                upload_url, headers=headers, files=files, timeout=120
+                upload_url, headers=headers, data=post_data, files=files, timeout=120
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()
