@@ -969,8 +969,6 @@ class BJS:
             return None
 
         cover_tmdb_url = f'https://image.tmdb.org/t/p/w500{cover_path}'
-        if BJS.already_has_the_info:
-            return cover_tmdb_url
 
         try:
             response = await self.session.get(cover_tmdb_url, timeout=120)
@@ -1426,6 +1424,10 @@ class BJS:
                         f"{self.tracker}: [yellow]Cover upload returned no URL; using fallback image link for required 'capa' field.[/yellow]"
                     )
 
+            console.print(
+                f"{self.tracker}: [cyan]DEBUG: cover_image value being submitted: {cover_image!r}[/cyan]"
+            )
+
             data.update({
                 'image': cover_image,
                 'screenshots[]': screenshots,
@@ -1509,6 +1511,9 @@ class BJS:
     def check_data(self, meta: dict[str, Any], data: dict[str, Any]) -> str:
         if not meta.get("debug", False) and len(data["screenshots[]"]) < 2:
             return "The number of successful screenshots uploaded is less than 2."
+
+        if not meta.get("debug", False) and not data.get("image"):
+            return "Cover image (capa) is empty — get_cover() and all fallbacks failed. Check session cookies and image_list."
 
         if any(
             value == "skipped" for value in (data.get("diretor"), data.get("elenco"), data.get("creators"))
