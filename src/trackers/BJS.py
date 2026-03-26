@@ -905,20 +905,59 @@ class BJS:
             # Debug: Log raw response if available
             console.print(f'{self.tracker}: [cyan]DEBUG: Response status {response.status_code}[/cyan]')
             
-            data: dict[str, Any] = response.json()
+            data: Any = response.json()
 
-            img_url = None
-            if data.get('url') and str(data.get('url', '')).startswith('http'):
-                img_url = str(data.get('url', '')).replace('\\/', '/')
-            else:
-                # Check for error messages in the response
-                error_msg = data.get('error') or data.get('message') or data.get('msg', '')
-                if error_msg:
-                    console.print(f'{self.tracker}: [bold red]Screenshot upload error: {error_msg}[/bold red]')
+            def _extract_url(payload: Any) -> Optional[str]:
+                # BJS can return different JSON shapes depending on backend/plugin.
+                if isinstance(payload, str):
+                    candidate = payload.replace('\\/', '/')
+                    return candidate if candidate.startswith('http') else None
+
+                if not isinstance(payload, dict):
+                    return None
+
+                direct_keys = ('url', 'link', 'image', 'src', 'thumb')
+                for key in direct_keys:
+                    value = payload.get(key)
+                    if isinstance(value, str):
+                        candidate = value.replace('\\/', '/')
+                        if candidate.startswith('http'):
+                            return candidate
+                    if isinstance(value, dict):
+                        nested = _extract_url(value)
+                        if nested:
+                            return nested
+
+                nested_keys = ('data', 'result', 'response', 'payload', 'file', 'image')
+                for key in nested_keys:
+                    nested_payload = payload.get(key)
+                    nested_url = _extract_url(nested_payload)
+                    if nested_url:
+                        return nested_url
+
+                return None
+
+            img_url = _extract_url(data)
+            if img_url:
+                return img_url
+
+            error_msg = ''
+            if isinstance(data, dict):
+                error_msg = str(data.get('error') or data.get('message') or data.get('msg') or '').strip()
+
+            if error_msg:
+                if any(token in error_msg.lower() for token in ('login', 'session', 'auth', 'expired')):
+                    console.print(
+                        f'{self.tracker}: [bold red]Screenshot upload failed: possible expired/invalid session cookie. Message: {error_msg}[/bold red]'
+                    )
                 else:
-                    console.print(f'{self.tracker}: [bold red]The image host appears to be down. Response: {data}[/bold red]')
+                    console.print(f'{self.tracker}: [bold red]Screenshot upload error: {error_msg}[/bold red]')
+            else:
+                console.print(
+                    f'{self.tracker}: [bold red]Screenshot upload returned no usable image URL. Raw response: {data}[/bold red]'
+                )
 
-            return img_url
+            return None
         except Exception as e:
             console.print(f'Exceção no upload de {filename}: {e}', markup=False)
             return None
