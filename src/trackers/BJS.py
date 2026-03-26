@@ -882,7 +882,6 @@ class BJS:
         return keyword_map.get(source_type.lower(), 'Outro')
 
     async def img_host(self, image_bytes: bytes, filename: str) -> Optional[str]:
-        token_to_use = BJS.secret_token or ''
         upload_url = f'{self.base_url}/ajax.php?action=screen_up'
         
         headers = {
@@ -891,19 +890,21 @@ class BJS:
             'Accept': 'application/json',
         }
         
-        # For multipart uploads, send auth as form field, not query parameter
-        # This goes into the multipart body
-        post_data = {}
-        if token_to_use:
-            post_data['auth'] = token_to_use
-        
+        # Prepare file upload - rely on session cookies for authentication
         files = {'file': (filename, image_bytes, 'image/png')}
 
         try:
+            # Debug info about the upload
+            console.print(f'{self.tracker}: [yellow]DEBUG: Uploading {filename} ({len(image_bytes)} bytes) to {upload_url}[/yellow]')
+            
             response = await self.session.post(
-                upload_url, headers=headers, data=post_data, files=files, timeout=120
+                upload_url, headers=headers, files=files, timeout=120
             )
             response.raise_for_status()
+            
+            # Debug: Log raw response if available
+            console.print(f'{self.tracker}: [cyan]DEBUG: Response status {response.status_code}[/cyan]')
+            
             data: dict[str, Any] = response.json()
 
             img_url = None
@@ -915,10 +916,7 @@ class BJS:
                 if error_msg:
                     console.print(f'{self.tracker}: [bold red]Screenshot upload error: {error_msg}[/bold red]')
                 else:
-                    if not token_to_use:
-                        console.print(f'{self.tracker}: [bold red]The image host appears to be down (no auth token available). Response: {data}[/bold red]')
-                    else:
-                        console.print(f'{self.tracker}: [bold red]The image host appears to be down. Response: {data}[/bold red]')
+                    console.print(f'{self.tracker}: [bold red]The image host appears to be down. Response: {data}[/bold red]')
 
             return img_url
         except Exception as e:
